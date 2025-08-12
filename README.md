@@ -91,13 +91,3 @@ The project follows a structured machine learning pipeline:
 
 ## 📊 Results
 
-The model's performance on the held-out test set is summarized below. The focus was on achieving a good balance between **Recall** (correctly identifying at-risk patients) and **Precision**.
-
-| Metric                | Score |
-| --------------------- | ----- |
-| **Recall (Class 1)** | 0.XX  |
-| **Precision (Class 1)**| 0.XX  |
-| **F1-Score (Class 1)** | 0.XX  |
-
-*(Note: Replace `0.XX` with your final scores after running `train.py`)*
-
