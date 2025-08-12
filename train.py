@@ -7,7 +7,8 @@ from pathlib import Path
 from sklearn.model_selection import train_test_split
 from imblearn.over_sampling import ADASYN
 from xgboost import XGBClassifier
-from sklearn.metrics import classification_report, roc_auc_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+
 
 # Import your custom modules
 from src.read_data import load_data
@@ -72,23 +73,39 @@ def run_training_pipeline():
     logging.info(f"Resampling complete. Resampled data shape: {X_resampled.shape}")
 
     # --- 7. Train Model ---
-    logging.info("Training XGBoost model...")
-    model = XGBClassifier(use_label_encoder=False, eval_metric='logloss', random_state=RANDOM_STATE)
-    model.fit(X_resampled, y_resampled)
-    logging.info("Model training complete.")
+    models = {
+        'RandomForestClassifier': RandomForestClassifier(random_state=42),
+        'XGBClassifier': XGBClassifier(random_state=42, use_label_encoder=False, eval_metric='logloss'),
+    }
+
+    for name, model in models.items():
+        logging.info(f"Training {name}...")
+        model.fit(X_resampled, y_resampled.values.ravel())
+        logging.info(f"Finished training {name}.")
 
     # --- 8. Evaluate Model ---
-    logging.info("Evaluating model on the test set...")
-    # Align y_test index with the processed and selected X_test
     y_test_aligned = y_test.loc[X_test_selected.index]
-    predictions = model.predict(X_test_selected)
-    pred_proba = model.predict_proba(X_test_selected)[:, 1]
+    for name, model in models.items():
+        logging.info(f"Evaluating {name}...")
 
-    report = classification_report(y_test_aligned, predictions)
-    roc_auc = roc_auc_score(y_test_aligned, pred_proba)
+        # Make predictions
+        predictions = model.predict(X_test)
 
-    logging.info(f"\n--- Classification Report ---\n{report}")
-    logging.info(f"--- ROC AUC Score: {roc_auc:.4f} ---")
+        # Accuracy Score
+        acc = accuracy_score(y_test_aligned, predictions)
+        # F1 Score
+        f1 = f1_score(y_test_aligned, predictions)
+        # Precision Score
+        precision = precision_score(y_test_aligned, predictions)
+        # Recall Score
+        recall = recall_score(y_test_aligned, predictions)
+
+        report = f"Accuracy  : {acc:.2f}\nF1        : {f1:.2}\nPrecision : {precision}\nRecall    : {recall}"
+
+        # Evaluate performance
+        logging.info(f"--- {name} Performance ---")
+        logging.info(f"\nClassification Report:\n{report}")
+        print("-" * 30)
 
     # --- 9. Save Artifacts ---
     logging.info("Saving training artifacts...")
@@ -96,11 +113,12 @@ def run_training_pipeline():
         pickle.dump(preprocessor, f)
     with open(ARTIFACTS_DIR / "feature_selector.pkl", "wb") as f:
         pickle.dump(selector, f)
-    with open(ARTIFACTS_DIR / "model.pkl", "wb") as f:
-        pickle.dump(model, f)
+    for name, model in models.items():
+        with open(ARTIFACTS_DIR / f"{name}.pkl", "wb") as f:
+            pickle.dump(model, f)
     logging.info("Artifacts saved successfully.")
     logging.info("--- Pipeline Finished ---")
 
 
-if __name__ == "__main__":
-    run_training_pipeline()
+    if __name__ == "__main__":
+        run_training_pipeline()
