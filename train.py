@@ -6,6 +6,7 @@ import pickle
 from pathlib import Path
 from sklearn.model_selection import train_test_split
 from imblearn.over_sampling import ADASYN
+from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
