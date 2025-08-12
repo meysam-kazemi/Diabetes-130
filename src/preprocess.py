@@ -1,67 +1,12 @@
-# Import libraries
+# src/preprocess.py
+
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split, GridSearchCV, StratifiedKFold
 from sklearn.preprocessing import StandardScaler
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import RandomForestClassifier
-from xgboost import XGBClassifier
-from lightgbm import LGBMClassifier
-from sklearn.metrics import confusion_matrix, classification_report, roc_auc_score, precision_recall_curve, auc
-from imblearn.over_sampling import ADASYN
-from sklearn.feature_selection import VarianceThreshold, RFE
-import warnings
-warnings.filterwarnings('ignore')
+from sklearn.feature_selection import VarianceThreshold
 
-def map_icd9_code(code_str):
-    """Groups ICD-9 codes into broader categories."""
-    if pd.isna(code_str) or code_str == '?':
-        return 'Missing'
-
-    # Handle codes that start with letters (V-codes, E-codes)
-    if code_str.startswith('V'):
-        return 'Supplementary'
-    if code_str.startswith('E'):
-        return 'External Injury'
-
-    try:
-        # Convert to float for numeric comparison
-        code = float(code_str)
-
-        # Define ranges for grouping
-        if 1 <= code <= 139:
-            return 'Infectious Diseases'
-        elif 140 <= code <= 239:
-            return 'Neoplasms' # Cancer
-        elif 240 <= code <= 279:
-            # This group includes Diabetes (250.xx)
-            return 'Endocrine/Metabolic'
-        elif 390 <= code <= 459:
-            return 'Circulatory System'
-        elif 460 <= code <= 519:
-            return 'Respiratory System'
-        elif 520 <= code <= 579:
-            return 'Digestive System'
-        # Add more 'elif' blocks here for other ranges if needed
-        else:
-            return 'Other'
-
-    except ValueError:
-        # If conversion to float fails for any other reason
-        return 'Other'
-
-
-
-# Encode age
-ages = X.age.unique()
-print("Ages: {}".format(ages))
-for i in range(10):
-    X.age = X.age.replace(f'[{10*i}-{10*(i+1)})', i+1)
-
-
-
-
-medication_cols = [
+# Define constants for better maintainability
+MEDICATION_COLS = [
     'metformin', 'repaglinide', 'nateglinide', 'chlorpropamide', 'glimepiride',
     'glipizide', 'glyburide', 'pioglitazone', 'rosiglitazone', 'acarbose',
     'miglitol', 'insulin', 'glyburide-metformin', 'tolazamide',
@@ -69,104 +14,179 @@ medication_cols = [
     'glipizide-metformin', 'troglitazone', 'tolbutamide', 'acetohexamide'
 ]
 
-for c in medication_cols:
-    print(f"{c:<25}: {X[c].unique()}")
+COLS_TO_DROP = ['weight', 'payer_code', 'citoglipton', 'examide']
 
+class DataPreprocessor:
+    """
+    A class to preprocess the diabetes dataset. It handles data cleaning,
+    feature engineering, encoding, and scaling, mimicking Scikit-learn's
+    fit/transform pattern.
+    """
 
-# Encode medication columns as numeric (0 for "No", 1 for "Steady"/"Up"/"Down")
-for col in medication_cols:
-    X[col] = X[col].map({'No': 0, 'Steady': 1, 'Up': 1, 'Down': 1})
+    def __init__(self, low_variance_threshold=0.01):
+        """
+        Initializes the preprocessor with a scaler and feature selector.
+        """
+        self.scaler = StandardScaler()
+        self.variance_selector = VarianceThreshold(threshold=low_variance_threshold)
+        self.selected_med_cols_ = None
+        self.numeric_cols_ = None
+        self.trained_columns_ = None
 
-X['change'] = X['change'].replace({'No': 0, 'Ch': 1})
-y['readmitted'] = y['readmitted'].replace({'<30': 1, '>30': 0, 'NO': 0})
-X['gender'] = X['gender'].replace({'Male': 1, 'Female': 0})
-X['diabetesMed'] = X['diabetesMed'].replace({'Yes': 1, 'No': 0})
-X['max_glu_serum'] = X['max_glu_serum'].replace({'>200': 1, '>300': 1, 'Norm': 0, 'Not Tested': -1})
-X['A1Cresult'] = X['A1Cresult'].replace({'>7': 1, '>8': 1, 'Norm': 0, 'Not Tested': -1})
-X = X.fillna('Unknown')
+    @staticmethod
+    def _map_icd9_code(code_str):
+        """Groups ICD-9 codes into broader, clinically relevant categories."""
+        if pd.isna(code_str) or code_str == '?':
+            return 'Missing'
+        if code_str.startswith('V'):
+            return 'Supplementary'
+        if code_str.startswith('E'):
+            return 'External_Injury'
 
-# drop miss rows
-X = X.drop(['weight', 'payer_code', 'citoglipton', 'examide'], axis=1)
-y = y[X['gender'] != 'Unknown/Invalid']
-X = X[X['gender'] != 'Unknown/Invalid']
+        try:
+            code = float(code_str)
+            if 1 <= code <= 139: return 'Infectious_Diseases'
+            elif 140 <= code <= 239: return 'Neoplasms'
+            elif 240 <= code <= 279: return 'Endocrine_Metabolic'
+            elif 390 <= code <= 459: return 'Circulatory_System'
+            elif 460 <= code <= 519: return 'Respiratory_System'
+            elif 520 <= code <= 579: return 'Digestive_System'
+            else: return 'Other'
+        except ValueError:
+            return 'Other'
 
+    def _clean_data(self, df, y_series=None):
+        """Drops unnecessary columns and rows."""
+        df = df.drop(columns=COLS_TO_DROP, errors='ignore')
 
-# Drop deceased patients
-y = y[X['discharge_disposition_id'] != 11]
-X = X[X['discharge_disposition_id'] != 11]
-X.shape, y.shape
+        # Filter out invalid gender rows from both X and y
+        if 'gender' in df.columns and y_series is not None:
+            invalid_gender_mask = df['gender'] != 'Unknown/Invalid'
+            df = df[invalid_gender_mask].copy()
+            y_series = y_series[invalid_gender_mask].copy()
 
-# Drop low-variance medication columns
-selector = VarianceThreshold(threshold=0.01)
-selector.fit(X[medication_cols])
-medication_cols = [medication_cols[i] for i in range(len(medication_cols)) if selector.get_support()[i]]
+        # Filter out deceased patients
+        if 'discharge_disposition_id' in df.columns and y_series is not None:
+            deceased_mask = df['discharge_disposition_id'] != 11
+            df = df[deceased_mask].copy()
+            y_series = y_series[deceased_mask].copy()
 
+        return df, y_series
 
-X['diag_1_group'] = X['diag_1'].apply(map_icd9_code)
-X['diag_2_group'] = X['diag_2'].apply(map_icd9_code)
-X['diag_3_group'] = X['diag_3'].apply(map_icd9_code)
-X[['diag_1', 'diag_2', 'diag_3', 'diag_1_group', 'diag_2_group', 'diag_3_group']]
+    def _encode_features(self, df):
+        """Encodes categorical and binary features into numerical format."""
+        # Age encoding
+        for i in range(10):
+            df['age'] = df['age'].replace(f'[{10*i}-{10*(i+1)})', i + 1)
 
+        # Medication encoding
+        for col in MEDICATION_COLS:
+            if col in df.columns:
+                df[col] = df[col].map({'No': 0, 'Steady': 1, 'Up': 1, 'Down': 1}).fillna(0)
 
+        # Binary feature encoding
+        df['change'] = df['change'].replace({'No': 0, 'Ch': 1})
+        df['gender'] = df['gender'].replace({'Male': 1, 'Female': 0})
+        df['diabetesMed'] = df['diabetesMed'].replace({'Yes': 1, 'No': 0})
 
-for col in ['time_in_hospital', 'num_lab_procedures', 'num_medications', 'number_inpatient']:
-    X[col + '_log'] = np.log1p(X[col])
+        # Special result encoding
+        df['max_glu_serum'] = df['max_glu_serum'].replace({'>200': 1, '>300': 1, 'Norm': 0, 'None': -1})
+        df['A1Cresult'] = df['A1Cresult'].replace({'>7': 1, '>8': 1, 'Norm': 0, 'None': -1})
+        return df
 
-# Create ratio features
-X['meds_per_diag'] = X['num_medications'] / X['number_diagnoses'].replace(0, 1)
-X['hospital_per_age'] = X['time_in_hospital'] / X['age'].replace(0, 1)
+    def _create_features(self, df):
+        """Engineers new features from existing data."""
+        # ICD-9 Grouping
+        for col in ['diag_1', 'diag_2', 'diag_3']:
+            df[f'{col}_group'] = df[col].apply(self._map_icd9_code)
+        df = df.drop(columns=['diag_1', 'diag_2', 'diag_3'])
 
+        # Log transformations for skewed numerical features
+        for col in ['time_in_hospital', 'num_lab_procedures', 'num_medications', 'number_inpatient']:
+            df[col + '_log'] = np.log1p(df[col])
 
+        # Ratio and interaction features
+        df['meds_per_diag'] = df['num_medications'] / df['number_diagnoses'].replace(0, 1)
+        df['service_utilization'] = df['number_outpatient'] + df['number_emergency'] + df['number_inpatient']
+        
+        df = pd.get_dummies(df, columns=['medical_specialty'], drop_first=True)
+        return df
 
-# One-hot encode categorical variables
-categorical_cols = ['max_glu_serum', 'A1Cresult', 'diag_1_group', 'diag_2_group', 'diag_3_group']
-X = pd.get_dummies(X, columns=categorical_cols, drop_first=True)
+    def fit(self, X, y):
+        """
+        Fits the preprocessor on the training data. Learns scaling parameters,
+        feature selection, and final column structure.
+        
+        Args:
+            X (pd.DataFrame): Training features.
+            y (pd.Series): Training target.
+        
+        Returns:
+            pd.DataFrame: The transformed training data.
+        """
+        X, y = self._clean_data(X.copy(), y.copy())
+        X = self._encode_features(X)
 
-# Interaction terms
-interaction_terms = [('num_medications', 'time_in_hospital'), ('num_medications', 'number_diagnoses')]
-for inter in interaction_terms:
-    name = inter[0] + '|' + inter[1]
-    X[name] = X[inter[0]] * X[inter[1]]
+        # Select medication columns based on variance
+        med_cols_in_data = [col for col in MEDICATION_COLS if col in X.columns]
+        self.variance_selector.fit(X[med_cols_in_data])
+        self.selected_med_cols_ = X[med_cols_in_data].columns[self.variance_selector.get_support()].tolist()
 
-# Define numeric columns
-numeric_cols = [
-    'age', 'time_in_hospital_log', 'num_lab_procedures_log', 'num_procedures', 'num_medications_log',
-    'number_outpatient', 'number_emergency', 'number_inpatient_log', 'number_diagnoses',
-    'service_utilization_log', 'numchange', 'encounter_count', 'meds_per_diag', 'hospital_per_age',
-    'num_medications|time_in_hospital', 'num_medications|number_diagnoses'
-]
+        # Keep only selected medication columns
+        cols_to_keep = [col for col in X.columns if col not in med_cols_in_data] + self.selected_med_cols_
+        X = X[cols_to_keep]
 
+        X = self._create_features(X)
 
+        # One-hot encode categorical features
+        categorical_cols = X.select_dtypes(include=['object', 'category']).columns
+        X = pd.get_dummies(X, columns=categorical_cols, drop_first=True)
 
-# Align X and y based on their index
-y = y.loc[X.index]
+        # Identify numeric columns for scaling and fit the scaler
+        self.numeric_cols_ = X.select_dtypes(include=np.number).columns.tolist()
+        X[self.numeric_cols_] = self.scaler.fit_transform(X[self.numeric_cols_])
 
-# Split the data into training and testing sets
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+        # Feature set
+        feature_set = self.numeric_cols_ + [col for col in X.columns if col.startswith((
+            'medical_specialty', 'max_glu_serum_', 'A1Cresult_', 'diag_1_group_', 'diag_2_group_', 'diag_3_group_'
+        ))] + MEDICATION_COLS + ['gender', 'change', 'diabetesMed']
+        X = X[feature_set]
+        # Store the final columns to ensure test set consistency
+        self.trained_columns_ = X.columns
+        return X
 
+    def transform(self, X):
+        """
+        Transforms new data using the already fitted preprocessor.
+        
+        Args:
+            X (pd.DataFrame): The data to transform (e.g., test set).
+        
+        Returns:
+            pd.DataFrame: The transformed data.
+        """
+        X_copy = X.copy()
+        X_copy, _ = self._clean_data(X_copy)
+        X_copy = self._encode_features(X_copy)
 
-scaler = StandardScaler()
-numeric_cols = X_train.select_dtypes(include=np.number).columns.tolist()
+        # Keep only the selected medication columns from training
+        med_cols_in_data = [col for col in MEDICATION_COLS if col in X_copy.columns]
+        cols_to_keep = [col for col in X_copy.columns if col not in med_cols_in_data] + self.selected_med_cols_
+        X_copy = X_copy[cols_to_keep]
 
+        X_copy = self._create_features(X_copy)
+        
+        # One-hot encode using the same logic
+        categorical_cols = X_copy.select_dtypes(include=['object', 'category']).columns
+        X_copy = pd.get_dummies(X_copy, columns=categorical_cols, drop_first=True)
 
-X_train[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
-X_test[numeric_cols] = scaler.transform(X_test[numeric_cols])
+        # Align columns with the training set
+        missing_cols = set(self.trained_columns_) - set(X_copy.columns)
+        for c in missing_cols:
+            X_copy[c] = 0
+        X_copy = X_copy[self.trained_columns_] # Ensure same order and columns
 
+        # Transform numeric columns with the fitted scaler
+        X_copy[self.numeric_cols_] = self.scaler.transform(X_copy[self.numeric_cols_])
 
-# Identify remaining non-numeric columns
-categorical_cols_remaining = X_train.select_dtypes(include=['object', 'category']).columns
-
-# One-hot encode the remaining categorical columns
-X_train = pd.get_dummies(X_train, columns=categorical_cols_remaining, drop_first=True)
-X_test = pd.get_dummies(X_test, columns=categorical_cols_remaining, drop_first=True)
-
-# Align columns after one-hot encoding - critical for consistent feature sets
-X_train, X_test = X_train.align(X_test, join='inner', axis=1, fill_value=0)
-
-# Instantiate ADASYN
-adasyn = ADASYN(random_state=42)
-
-# Apply ADASYN to the training data
-X_resampled, y_resampled = adasyn.fit_resample(X_train, y_train)
-
-
+        return X_copy
