@@ -169,10 +169,4 @@ adasyn = ADASYN(random_state=42)
 # Apply ADASYN to the training data
 X_resampled, y_resampled = adasyn.fit_resample(X_train, y_train)
 
-models = {
-    'RandomForestClassifier': RandomForestClassifier(random_state=42),
-    'XGBClassifier': XGBClassifier(random_state=42, use_label_encoder=False, eval_metric='logloss'),
-    'LGBMClassifier': LGBMClassifier(random_state=42)
-}
-
 
