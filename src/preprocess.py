@@ -133,8 +133,8 @@ class DataPreprocessor:
         self.selected_med_cols_ = X[med_cols_in_data].columns[self.variance_selector.get_support()].tolist()
 
         # Keep only selected medication columns
-        cols_to_keep = [col for col in X.columns if col not in med_cols_in_data] + self.selected_med_cols_
-        X = X[cols_to_keep]
+        self.cols_to_keep = [col for col in X.columns if col not in med_cols_in_data] + self.selected_med_cols_
+        X = X[self.cols_to_keep]
 
         X = self._create_features(X)
 
@@ -150,7 +150,10 @@ class DataPreprocessor:
         feature_set = self.numeric_cols_ + [col for col in X.columns if col.startswith((
             'medical_specialty', 'max_glu_serum_', 'A1Cresult_', 'diag_1_group_', 'diag_2_group_', 'diag_3_group_'
         ))] + MEDICATION_COLS + ['gender', 'change', 'diabetesMed']
-        X = X[feature_set]
+
+        self.feature_set = [feature for feature in feature_set if feature in X.columns]
+
+        X = X[self.feature_set]
         # Store the final columns to ensure test set consistency
         self.trained_columns_ = X.columns
         return X
@@ -171,8 +174,8 @@ class DataPreprocessor:
 
         # Keep only the selected medication columns from training
         med_cols_in_data = [col for col in MEDICATION_COLS if col in X_copy.columns]
-        cols_to_keep = [col for col in X_copy.columns if col not in med_cols_in_data] + self.selected_med_cols_
-        X_copy = X_copy[cols_to_keep]
+        self.cols_to_keep = [col for col in X_copy.columns if col not in med_cols_in_data] + self.selected_med_cols_
+        X_copy = X_copy[self.cols_to_keep]
 
         X_copy = self._create_features(X_copy)
         
@@ -180,11 +183,11 @@ class DataPreprocessor:
         categorical_cols = X_copy.select_dtypes(include=['object', 'category']).columns
         X_copy = pd.get_dummies(X_copy, columns=categorical_cols, drop_first=True)
 
-        # Align columns with the training set
-        missing_cols = set(self.trained_columns_) - set(X_copy.columns)
-        for c in missing_cols:
-            X_copy[c] = 0
-        X_copy = X_copy[self.trained_columns_] # Ensure same order and columns
+        ## Align columns with the training set
+        #missing_cols = set(self.trained_columns_) - set(X_copy.columns)
+        #for c in missing_cols:
+            #X_copy[c] = 0
+        #X_copy = X_copy[self.trained_columns_] # Ensure same order and columns
 
         # Transform numeric columns with the fitted scaler
         X_copy[self.numeric_cols_] = self.scaler.transform(X_copy[self.numeric_cols_])
