@@ -110,7 +110,7 @@ The `preprocessor`, `feature_selector`, and the final trained `model` are saved 
 
 
 ## Result
-![img](https://github.com/meysam-kazemi/Diabetes-130/blob/develop/img/res.png)
+![img](https://github.com/meysam-kazemi/Diabetes-130/blob/main/img/res.png)
 
 # [download models](https://drive.google.com/drive/folders/157SAhBbXCMnj-U_82udb9e5d-WThwwu_?usp=sharing)
 
