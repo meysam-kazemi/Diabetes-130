@@ -129,20 +129,3 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-## 💡 Answers to Key Questions
-
-#### 1\. How would you measure model accuracy for this task?
-
-Simple accuracy is misleading due to class imbalance. The primary metrics for this task are:
-
-  * **Recall (Sensitivity):** This is the most critical metric in a clinical setting. It measures our ability to identify at-risk patients, minimizing false negatives.
-  * **Precision:** Important for ensuring that interventions are targeted at genuinely high-risk patients, minimizing false positives.
-  * **F1-Score:** The harmonic mean of Precision and Recall, providing a single score that balances both.
-
-#### 2\. How would you check for bias in your model?
-
-I would perform a **bias audit** by segmenting the test set by sensitive demographic features (e.g., `race`, `gender`, `age`) and calculating performance metrics for each subgroup. Significant disparities in metrics like the **False Negative Rate** between groups would indicate that the model is biased and requires mitigation (e.g., through re-weighting or targeted data augmentation).
-
-#### 3\. How would you make your model’s predictions explainable to clinicians?
-
-To build trust with clinicians, I would use **Explainable AI (XAI)** techniques. Instead of providing a "black box" prediction, I would use libraries like **SHAP (SHapley Additive exPlanations)** to generate local, patient-specific explanations. A SHAP plot can show exactly which factors (e.g., "number of prior inpatient visits," "A1C result") contributed most to a specific patient's risk score, making the prediction transparent and actionable.
