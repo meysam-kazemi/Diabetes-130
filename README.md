@@ -103,17 +103,6 @@ To get a reliable estimate of model performance, **Stratified K-Fold Cross-Valid
 ### 5\. Final Model Training & Evaluation
 
 After cross-validation, the best-performing model (`XGBoostClassifier`) is re-trained on the **entire resampled training dataset**. This final model is then evaluated one last time on the held-out test set created in Step 1.
-
-### 6\. Artifact Persistence
-
-The `preprocessor`, `feature_selector`, and the final trained `model` are saved as `.pkl` files. This allows the entire pipeline to be easily loaded and used for making predictions on new data without retraining.
-
-
-## Result
-![img](https://github.com/meysam-kazemi/Diabetes-130/blob/main/img/res.png)
-
-# [download models](https://drive.google.com/drive/folders/157SAhBbXCMnj-U_82udb9e5d-WThwwu_?usp=sharing)
-
 --------
 ## ⚖️ License
 
